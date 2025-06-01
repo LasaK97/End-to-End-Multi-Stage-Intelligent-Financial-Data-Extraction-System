@@ -1,0 +1,11 @@
+# Environment
+.env
+
+# Large/binary data
+/models/
+/data/
+/logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
