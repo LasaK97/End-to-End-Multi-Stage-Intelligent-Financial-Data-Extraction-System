@@ -22,12 +22,21 @@ const queryClient = new QueryClient({
 });
 
 const AppContent = () => {
-  const { data: health } = useHealth();
-  const { setSystemHealth } = useAppStore();
+  const { status: healthQueryStatus, data: healthData, error: healthError } = useHealth();
+  const { setSystemHealth, setSystemStatus } = useAppStore();
 
   useEffect(() => {
-    setSystemHealth(health || null);
-  }, [health, setSystemHealth]);
+    if (healthQueryStatus === 'pending') {
+      setSystemStatus('loading');
+      setSystemHealth(null);
+    } else if (healthQueryStatus === 'error') {
+      setSystemStatus('unavailable');
+      setSystemHealth(null);
+    } else if (healthQueryStatus === 'success') {
+      setSystemStatus('ok');
+      setSystemHealth(healthData || null);
+    }
+  }, [healthQueryStatus, healthData, healthError, setSystemHealth, setSystemStatus]);
 
   return (
     <Router>

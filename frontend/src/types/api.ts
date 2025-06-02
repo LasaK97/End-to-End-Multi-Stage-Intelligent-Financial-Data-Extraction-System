@@ -86,3 +86,35 @@ export interface ErrorResponse {
   detail: string;
   timestamp: string;
 }
+
+// New interfaces for batch processing
+export interface BatchProcessResponse {
+  message: string;
+  processed_documents: string[];
+  failed_documents: Array<{
+    doc_id: string;
+    error: string;
+  }>;
+}
+
+export interface ClearResponse {
+  message: string;
+  cleared_count: number;
+}
+
+export interface QueueResponse {
+  queue: Array<{
+    document_id: string;
+    filename: string;
+    status: string;
+    upload_timestamp: string;
+    file_size: number;
+  }>;
+  count: number;
+}
+
+export interface ProcessingSummaryResponse {
+  upload_queue: Record<string, number>;
+  total_extractions: number;
+  queue_total: number;
+}

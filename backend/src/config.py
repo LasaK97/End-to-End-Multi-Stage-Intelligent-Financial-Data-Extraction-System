@@ -2,6 +2,8 @@ import os
 from pathlib import Path 
 from typing import Dict, Any, List 
 from utils.logger import get_logger
+import json
+from dotenv import load_dotenv
 
 #create logger
 logger = get_logger("config")
@@ -130,18 +132,25 @@ def get_pattern_for_detection(detection_type: str) -> Dict[str, List[str]]:
 
 
 # API host
+load_dotenv()
+
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", 8000))
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", '["http://localhost:8000"]')
+
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "")
+
+if _cors_origins_raw.startswith("[") and _cors_origins_raw.endswith("]"):
+    _cors_origins_raw = _cors_origins_raw.strip("[]")
+    CORS_ORIGINS = [o.strip().strip('"').strip("'") for o in _cors_origins_raw.split(",")]
+else:
+    CORS_ORIGINS = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
+if not CORS_ORIGINS:
+    CORS_ORIGINS = ["http://localhost:8000"]
+
 UPLOAD_MAX_SIZE_MB = int(os.getenv("UPLOAD_MAX_SIZE_MB", 50))
 API_DEBUG = os.getenv("API_DEBUG", "false").lower() == "true"
 
-# Parse CORS origins
-try:
-    import json
-    CORS_ORIGINS = json.loads(CORS_ORIGINS.replace("'", '"'))
-except:
-    CORS_ORIGINS = ["http://localhost:8000"]
 
 
 def get_settings() -> Dict[str, Any]:

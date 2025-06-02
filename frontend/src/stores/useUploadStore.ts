@@ -4,6 +4,8 @@ import type { UploadFile } from '../types/common';
 interface UploadStore {
   files: UploadFile[];
   isUploading: boolean;
+  isProcessing: boolean;
+  
   addFiles: (files: File[]) => void;
   updateFileProgress: (id: string, progress: number) => void;
   updateFileStatus: (
@@ -15,12 +17,20 @@ interface UploadStore {
   removeFile: (id: string) => void;
   clearCompleted: () => void;
   clearAll: () => void;
+  
   setUploading: (uploading: boolean) => void;
+  setProcessing: (processing: boolean) => void;
+  
+  getUploadedFiles: () => UploadFile[];
+  getProcessableFiles: () => UploadFile[];
+  getPendingFiles: () => UploadFile[];
+  getFailedFiles: () => UploadFile[];
 }
 
 export const useUploadStore = create<UploadStore>((set, get) => ({
   files: [],
   isUploading: false,
+  isProcessing: false,
 
   addFiles: (files: File[]) => {
     const newFiles: UploadFile[] = files.map((file) => ({
@@ -52,7 +62,13 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     set((state) => ({
       files: state.files.map((file) =>
         file.id === id
-          ? { ...file, status, error, documentId, progress: status === 'success' ? 100 : file.progress }
+          ? { 
+              ...file, 
+              status, 
+              error, 
+              documentId, 
+              progress: status === 'success' ? 100 : file.progress 
+            }
           : file
       ),
     }));
@@ -66,7 +82,9 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   clearCompleted: () => {
     set((state) => ({
-      files: state.files.filter((file) => file.status === 'pending' || file.status === 'uploading'),
+      files: state.files.filter((file) => 
+        file.status === 'pending' || file.status === 'uploading'
+      ),
     }));
   },
 
@@ -76,5 +94,27 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
 
   setUploading: (uploading: boolean) => {
     set({ isUploading: uploading });
+  },
+
+  setProcessing: (processing: boolean) => {
+    set({ isProcessing: processing });
+  },
+
+  getUploadedFiles: () => {
+    return get().files.filter(file => file.status === 'success');
+  },
+
+  getProcessableFiles: () => {
+    return get().files.filter(file => 
+      file.status === 'success' && file.documentId
+    );
+  },
+
+  getPendingFiles: () => {
+    return get().files.filter(file => file.status === 'pending');
+  },
+
+  getFailedFiles: () => {
+    return get().files.filter(file => file.status === 'error');
   },
 }));

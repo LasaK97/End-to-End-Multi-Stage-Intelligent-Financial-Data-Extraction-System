@@ -1,18 +1,21 @@
 import { useCallback } from 'react';
-import { useUploadDocument } from './useApi';
 import { useUploadStore } from '../stores/useUploadStore';
 import { validateFile } from '../utils/validation';
+import { uploadDocument } from '../services/api';
 import toast from 'react-hot-toast';
 
 export const useUpload = () => {
-  const uploadMutation = useUploadDocument();
   const { 
     files, 
     addFiles, 
-    updateFileProgress, 
+    updateFileProgress,
     updateFileStatus, 
     setUploading,
-    isUploading 
+    isUploading,
+    getProcessableFiles,
+    getUploadedFiles,
+    getPendingFiles,
+    getFailedFiles
   } = useUploadStore();
 
   const handleFileAdd = useCallback((newFiles: File[]) => {
@@ -42,17 +45,15 @@ export const useUpload = () => {
         updateFileStatus(fileRecord.id, 'uploading');
 
         try {
-          const result = await uploadMutation.mutateAsync({
-            file,
-            onProgress: (progress) => {
-              updateFileProgress(fileRecord.id, progress);
-            },
+          const result = await uploadDocument(file, (progress) => {
+            updateFileProgress(fileRecord.id, progress);
           });
 
           updateFileStatus(fileRecord.id, 'success', undefined, result.document_id);
           toast.success(`${file.name} uploaded successfully`);
+          
         } catch (error: any) {
-          const errorMessage = error.details || error.message || 'Upload failed';
+          const errorMessage = error.response?.data?.detail || error.message || 'Upload failed';
           updateFileStatus(fileRecord.id, 'error', errorMessage);
           toast.error(`${file.name}: ${errorMessage}`);
         }
@@ -60,20 +61,34 @@ export const useUpload = () => {
     } finally {
       setUploading(false);
     }
-  }, [files, uploadMutation, updateFileStatus, updateFileProgress, setUploading]);
+  }, [files, updateFileStatus, updateFileProgress, setUploading]);
 
   const retryUpload = useCallback((fileId: string) => {
     const file = files.find(f => f.id === fileId);
-    if (file) {
+    if (file && file.status === 'error') {
       uploadFiles([file.file]);
     }
   }, [files, uploadFiles]);
+
+  const getStats = useCallback(() => {
+    return {
+      total: files.length,
+      uploaded: getUploadedFiles().length,
+      pending: getPendingFiles().length,
+      failed: getFailedFiles().length,
+      processable: getProcessableFiles().length,
+    };
+  }, [files, getUploadedFiles, getPendingFiles, getFailedFiles, getProcessableFiles]);
 
   return {
     files,
     isUploading,
     handleFileAdd,
     retryUpload,
-    uploadProgress: uploadMutation.isPending,
+    getProcessableFiles,
+    getUploadedFiles,
+    getPendingFiles,
+    getFailedFiles,
+    getStats,
   };
 };

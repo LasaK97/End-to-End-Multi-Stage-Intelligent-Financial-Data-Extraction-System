@@ -146,6 +146,38 @@ class ErrorResponse(BaseModel):
     detail: str 
     timestamp: str 
 
+class UploadDocument(BaseModel):
+    document_id: str
+    filename: str
+    file_size: int
+    file_path: str
+    upload_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    status: str = "uploaded"  # uploaded, processing, completed, failed
+    message: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class BatchProcessRequest(BaseModel):
+    document_ids: List[str]
+
+class BatchProcessResponse(BaseModel):
+    message: str
+    processed_documents: List[str]
+    failed_documents: List[Dict[str, str]]
+
+class QueueResponse(BaseModel):
+    queue: List[Dict[str, Any]]
+    count: int
+
+class ClearResponse(BaseModel):
+    message: str
+    cleared_count: int
+
+class ProcessingSummaryResponse(BaseModel):
+    upload_queue: Dict[str, int]
+    total_extractions: int
+    queue_total: int
+
 
 
  

@@ -4,9 +4,11 @@ import type { HealthResponse } from '../types/api';
 interface AppStore {
   isLoading: boolean;
   systemHealth: HealthResponse | null;
+  systemStatus: 'loading' | 'ok' | 'error' | 'unavailable'; 
   sidebarOpen: boolean;
   setLoading: (loading: boolean) => void;
   setSystemHealth: (health: HealthResponse | null) => void;
+  setSystemStatus: (status: 'loading' | 'ok' | 'error' | 'unavailable') => void; 
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
 }
@@ -14,6 +16,7 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set) => ({
   isLoading: false,
   systemHealth: null,
+  systemStatus: 'loading', 
   sidebarOpen: false,
 
   setLoading: (loading: boolean) => {
@@ -22,6 +25,10 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setSystemHealth: (health: HealthResponse | null) => {
     set({ systemHealth: health });
+  },
+
+  setSystemStatus: (status: 'loading' | 'ok' | 'error' | 'unavailable') => { 
+    set({ systemStatus: status });
   },
 
   setSidebarOpen: (open: boolean) => {

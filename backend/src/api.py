@@ -39,8 +39,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    # allow_origins=[
+    #     "http://localhost:3000",    # Frontend dev server
+    #     "http://localhost:5173",   # Alternative Vite port
+    #     "http://127.0.0.1:3000",
+    #     "http://127.0.0.1:5173"
+    # ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "PUT"],
+    allow_methods=["GET", "POST", "DELETE", "PUT", "OPTIONS", "HEAD"],
     allow_headers=["*"]
 )
 
@@ -62,11 +68,44 @@ async def get_pipeline_instance():
             )
     return pipeline_instance 
 
+# def process_document_background(pipeline, file_path: Path, doc_id: str, filename: str):
+#     import asyncio
+    
+#     try:
+#         logger.info(f"Starting the processing the document: {doc_id}")
+        
+#         loop = asyncio.new_event_loop()
+#         asyncio.set_event_loop(loop)
+        
+#         try:
+#             success, result = loop.run_until_complete(pipeline.process_doc(file_path, doc_id))
+            
+#             if success:
+#                 logger.info(f"Successfully processed: {doc_id}")
+#             else:
+#                 logger.error(f"Error in processing document: {doc_id} | {result.errors}")
+                
+#         finally:
+#             loop.close()
+
+#     except Exception as e:
+#         logger.error(f"Error in processing document: {doc_id} | {str(e)}")
+
+#         try:
+#             pipeline.update_status(
+#                 doc_id, "failed", 0,
+#                 f"Processing error: {str(e)}",
+#                 None,
+#                 filename
+#             )
+#         except:
+#             pass
+
 def process_document_background(pipeline, file_path: Path, doc_id: str, filename: str):
     import asyncio
     
     try:
-        logger.info(f"Starting the processing the document: {doc_id}")
+        logger.info(f"Starting background processing: {doc_id}")
         
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -76,16 +115,19 @@ def process_document_background(pipeline, file_path: Path, doc_id: str, filename
             
             if success:
                 logger.info(f"Successfully processed: {doc_id}")
+                # Update upload document status
+                db.update_upload_status(doc_id, "completed")
             else:
-                logger.error(f"Error in processing document: {doc_id} | {result.errors}")
+                logger.error(f"Processing failed: {doc_id} | {result.errors}")
+                db.update_upload_status(doc_id, "failed", str(result.errors))
                 
         finally:
             loop.close()
 
     except Exception as e:
-        logger.error(f"Error in processing document: {doc_id} | {str(e)}")
-
+        logger.error(f"Background processing error: {doc_id} | {str(e)}")
         try:
+            db.update_upload_status(doc_id, "failed", str(e))
             pipeline.update_status(
                 doc_id, "failed", 0,
                 f"Processing error: {str(e)}",
@@ -145,12 +187,17 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
         except Exception as e:
             raise HTTPException(status_code=500, detail= f"Failed to save file: {str(e)}")
         
+        upload_doc = db.save_upload_document(doc_id, filename, file_size, str(file_path))
+
+        
         pipeline.update_status(doc_id, "uploaded", 0, "File uploaded successfully, queued for processing",  None, filename)
 
+        logger.info(f"File uploaded and queued: {filename} -> {doc_id}")
+        
 
-        background_tasks.add_task(
-            process_document_background, pipeline, file_path, doc_id, filename
-        )
+        # background_tasks.add_task(
+        #     process_document_background, pipeline, file_path, doc_id, filename
+        # )
 
         logger.info(f"File uploaded and queued: {filename} -> {doc_id}")
 
@@ -167,55 +214,119 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
         logger.error(f"Upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
-
-
-# # Also add this debug version of process_document_background:
-# def process_document_background(pipeline, file_path: Path, doc_id: str, filename: str):
-#     """Debug version of document processing"""
-#     print(f"DEBUG: process_document_background called with:")
-#     print(f"  pipeline: {type(pipeline)}")
-#     print(f"  file_path: {file_path} (type: {type(file_path)})")
-#     print(f"  doc_id: {doc_id} (type: {type(doc_id)})")
-#     print(f"  filename: {filename} (type: {type(filename)})")
-    
-#     import asyncio
-    
-#     try:
-#         logger.info(f"Starting the processing the document: {doc_id}")
+@app.post("/process-batch")
+async def process_batch(
+    background_tasks: BackgroundTasks, 
+    request: dict,
+    pipeline = Depends(get_pipeline_instance)
+):
+    try:
+        document_ids = request.get('document_ids', [])
         
-#         # Create and run async task in new event loop
-#         loop = asyncio.new_event_loop()
-#         asyncio.set_event_loop(loop)
+        if not document_ids:
+            raise HTTPException(status_code=400, detail="No document IDs provided")
         
-#         try:
-#             print(f"DEBUG: About to call pipeline.process_doc")
-#             success, result = loop.run_until_complete(pipeline.process_doc(file_path, doc_id))
-#             print(f"DEBUG: pipeline.process_doc completed: success={success}")
-            
-#             if success:
-#                 logger.info(f"Successfully processed: {doc_id}")
-#             else:
-#                 logger.error(f"Error in processing document: {doc_id} | {result.errors}")
+        processed_docs = []
+        failed_docs = []
+        
+        for doc_id in document_ids:
+            # Get upload document info
+            upload_doc = db.get_upload_document(doc_id)
+            if not upload_doc:
+                failed_docs.append({"doc_id": doc_id, "error": "Document not found"})
+                continue
                 
-#         finally:
-#             loop.close()
+            # Check if file exists
+            file_path = Path(upload_doc['file_path'])
+            if not file_path.exists():
+                failed_docs.append({"doc_id": doc_id, "error": "File not found on disk"})
+                continue
+            
+            # Update status to processing
+            db.update_upload_status(doc_id, "processing")
+            pipeline.update_status(doc_id, "processing", 10, "Starting extraction process", None, upload_doc['filename'])
+            
+            # Start background processing
+            background_tasks.add_task(
+                process_document_background, pipeline, file_path, doc_id, upload_doc['filename']
+            )
+            processed_docs.append(doc_id)
+                
+        logger.info(f"Batch processing started: {len(processed_docs)} documents, {len(failed_docs)} failed")
+        
+        return {
+            "message": f"Started processing {len(processed_docs)} documents",
+            "processed_documents": processed_docs,
+            "failed_documents": failed_docs
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch processing error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
 
-#     except Exception as e:
-#         print(f"DEBUG: Error in process_document_background: {str(e)}")
-#         import traceback
-#         traceback.print_exc()
-#         logger.error(f"Error in processing document: {doc_id} | {str(e)}")
+@app.delete("/clear-queue")
+async def clear_queue():
+    try:
+        # Get all uploaded documents
+        uploaded_docs = db.get_uploaded_documents()
+        
+        cleared_count = 0
+        for doc in uploaded_docs:
+            # Only clear documents that are in "uploaded" status (not processing/completed)
+            if doc.get('status') == 'uploaded':
+                # Delete file from disk
+                file_path = Path(doc.get('file_path', ''))
+                if file_path.exists():
+                    file_path.unlink()
+                
+                # Remove from database
+                db.delete_upload_document(doc['document_id'])
+                cleared_count += 1
+        
+        logger.info(f"Queue cleared: {cleared_count} documents removed")
+        
+        return {
+            "message": f"Queue cleared successfully. Removed {cleared_count} documents.",
+            "cleared_count": cleared_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Clear queue error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear queue: {str(e)}")
 
-#         try:
-#             pipeline.update_status(
-#                 doc_id, "failed", 0,
-#                 f"Processing error: {str(e)}",
-#                 None,
-#                 filename
-#             )
-#         except Exception as update_error:
-#             print(f"DEBUG: Error updating status: {str(update_error)}")
-#             pass
+@app.delete("/clear-results")
+async def clear_results():
+    try:
+        # Clear all completed extraction results
+        cleared_count = db.clear_extraction_results()
+        
+        logger.info(f"Results cleared: {cleared_count} extraction results removed")
+        
+        return {
+            "message": f"Results cleared successfully. Removed {cleared_count} results.",
+            "cleared_count": cleared_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Clear results error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear results: {str(e)}")
+
+@app.get("/upload-queue")
+async def get_upload_queue():
+    try:
+        # Get all uploaded documents waiting for processing
+        queue_docs = db.get_upload_queue()
+        
+        return {
+            "queue": queue_docs,
+            "count": len(queue_docs)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get upload queue error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get upload queue: {str(e)}")
     
 
 @app.get("/status/{doc_id}", response_model=StatusResponse)

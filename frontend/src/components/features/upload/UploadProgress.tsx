@@ -1,4 +1,4 @@
-import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, ExclamationCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { ProgressBar } from '../../ui/Index';
 import { formatFileSize } from '../../../utils/formatting';
 import type { UploadFile } from '../../../types/common';
@@ -14,23 +14,25 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case 'error':
         return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />;
+      case 'uploading':
+        return <ClockIcon className="h-5 w-5 text-blue-500" />;
       default:
-        return null;
+        return <ClockIcon className="h-5 w-5 text-gray-400" />;
     }
   };
 
   const getStatusText = () => {
     switch (file.status) {
       case 'pending':
-        return 'Waiting...';
+        return 'Waiting to upload...';
       case 'uploading':
         return `Uploading... ${file.progress}%`;
       case 'success':
-        return 'Upload complete';
+        return 'Upload complete - Ready for processing';
       case 'error':
         return file.error || 'Upload failed';
       default:
-        return '';
+        return 'Unknown status';
     }
   };
 
@@ -45,8 +47,21 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
     }
   };
 
+  const getBorderColor = () => {
+    switch (file.status) {
+      case 'success':
+        return 'border-green-200 bg-green-50';
+      case 'error':
+        return 'border-red-200 bg-red-50';
+      case 'uploading':
+        return 'border-blue-200 bg-blue-50';
+      default:
+        return 'border-gray-200 bg-gray-50';
+    }
+  };
+
   return (
-    <div className="p-3 border border-gray-200 rounded-lg">
+    <div className={`p-3 border rounded-lg ${getBorderColor()}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2 flex-1 min-w-0">
           {getStatusIcon()}
@@ -71,7 +86,9 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-600">{getStatusText()}</span>
         {file.status === 'success' && file.documentId && (
-          <span className="text-xs text-green-600">ID: {file.documentId.slice(0, 8)}...</span>
+          <span className="text-xs text-green-600">
+            ID: {file.documentId.slice(0, 8)}...
+          </span>
         )}
       </div>
     </div>

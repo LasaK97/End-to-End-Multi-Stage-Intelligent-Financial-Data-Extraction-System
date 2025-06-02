@@ -43,6 +43,8 @@ class Database:
             self.analytics_collection.create_index("timestamp")
             self.analytics_collection.create_index("pattern_type")
 
+            self.create_upload_indexes()
+
             logger.info("MongoDB connection established.")
             logger.info(f"Connected to DB: {DATABASE_NAME}, Collection: {COLLECTION_NAME}")
         except Exception as e:
@@ -393,7 +395,229 @@ class Database:
                 logger.warning(f"No document found to delete with ID: {document_id}")
                 return False
         except Exception as e:
-            logger.error(f"Failed to delete document {document_id}: {e}")
+            logger.error(f"Failed to delete document {document_id}: {e}") 
             return False
+        
+    def save_upload_document(self, document_id: str, filename: str, file_size: int, file_path: str) -> Optional[str]:
+        """Save uploaded document metadata before processing"""
+        try:
+            upload_doc = {
+                "document_id": document_id,
+                "filename": filename,
+                "file_size": file_size,
+                "file_path": file_path,
+                "upload_timestamp": datetime.utcnow(),
+                "status": "uploaded",  # uploaded, processing, completed, failed
+                "message": "File uploaded successfully",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            # Use a separate collection for upload tracking
+            upload_collection = self.db["upload_queue"]
+            result = upload_collection.insert_one(upload_doc)
+            
+            logger.info(f"Upload document saved: {document_id}")
+            return str(result.inserted_id)
+            
+        except Exception as e:
+            logger.error(f"Failed to save upload document: {e}")
+            return None
+
+    def get_upload_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """Get upload document by ID"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            doc = upload_collection.find_one({"document_id": document_id})
+            
+            if doc:
+                doc["_id"] = str(doc["_id"])
+                
+            return doc
+            
+        except Exception as e:
+            logger.error(f"Failed to get upload document {document_id}: {e}")
+            return None
+
+    def get_uploaded_documents(self) -> List[Dict[str, Any]]:
+        """Get all uploaded documents"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            docs = []
+            
+            for doc in upload_collection.find().sort("upload_timestamp", -1):
+                doc["_id"] = str(doc["_id"])
+                docs.append(doc)
+                
+            return docs
+            
+        except Exception as e:
+            logger.error(f"Failed to get uploaded documents: {e}")
+            return []
+
+    def get_upload_queue(self) -> List[Dict[str, Any]]:
+        """Get documents waiting for processing"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            docs = []
+            
+            # Get documents with status 'uploaded' or 'processing'
+            query = {"status": {"$in": ["uploaded", "processing"]}}
+            
+            for doc in upload_collection.find(query).sort("upload_timestamp", 1):
+                doc["_id"] = str(doc["_id"])
+                docs.append(doc)
+                
+            return docs
+            
+        except Exception as e:
+            logger.error(f"Failed to get upload queue: {e}")
+            return []
+
+    def update_upload_status(self, document_id: str, status: str, message: str = None):
+        """Update upload document status"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            
+            update_data = {
+                "status": status,
+                "updated_at": datetime.utcnow()
+            }
+            
+            if message:
+                update_data["message"] = message
+                
+            result = upload_collection.update_one(
+                {"document_id": document_id},
+                {"$set": update_data}
+            )
+            
+            if result.modified_count > 0:
+                logger.debug(f"Upload status updated: {document_id} -> {status}")
+            else:
+                logger.warning(f"No upload document found to update: {document_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to update upload status: {e}")
+
+    def delete_upload_document(self, document_id: str) -> bool:
+        """Delete upload document from queue"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            result = upload_collection.delete_one({"document_id": document_id})
+            
+            if result.deleted_count > 0:
+                logger.info(f"Upload document deleted: {document_id}")
+                return True
+            else:
+                logger.warning(f"No upload document found to delete: {document_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to delete upload document: {e}")
+            return False
+
+    def clear_upload_queue(self) -> int:
+        """Clear all uploaded documents (not processing/completed)"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            
+            # Only delete documents in 'uploaded' status
+            result = upload_collection.delete_many({"status": "uploaded"})
+            
+            logger.info(f"Upload queue cleared: {result.deleted_count} documents")
+            return result.deleted_count
+            
+        except Exception as e:
+            logger.error(f"Failed to clear upload queue: {e}")
+            return 0
+
+    def clear_extraction_results(self) -> int:
+        """Clear all completed extraction results"""
+        try:
+            # Clear from main documents collection
+            main_result = self.collection.delete_many({"status": "completed"})
+            
+            # Clear from upload queue (completed/failed)
+            upload_collection = self.db["upload_queue"]
+            upload_result = upload_collection.delete_many({"status": {"$in": ["completed", "failed"]}})
+            
+            total_cleared = main_result.deleted_count + upload_result.deleted_count
+            
+            logger.info(f"Extraction results cleared: {total_cleared} documents")
+            return total_cleared
+            
+        except Exception as e:
+            logger.error(f"Failed to clear extraction results: {e}")
+            return 0
+
+    def get_processing_summary(self) -> Dict[str, Any]:
+        """Get summary of processing status"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            
+            # Count by status
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": "$status",
+                        "count": {"$sum": 1}
+                    }
+                }
+            ]
+            
+            status_counts = {}
+            for result in upload_collection.aggregate(pipeline):
+                status_counts[result["_id"]] = result["count"]
+            
+            # Get total extraction results
+            total_extractions = self.collection.count_documents({})
+            
+            return {
+                "upload_queue": status_counts,
+                "total_extractions": total_extractions,
+                "queue_total": sum(status_counts.values())
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get processing summary: {e}")
+            return {}
+
+    def cleanup_old_uploads(self, days_old: int = 7) -> int:
+        """Clean up old upload documents"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+            
+            # Delete old completed/failed uploads
+            result = upload_collection.delete_many({
+                "status": {"$in": ["completed", "failed"]},
+                "updated_at": {"$lt": cutoff_date}
+            })
+            
+            logger.info(f"Cleaned up {result.deleted_count} old upload documents")
+            return result.deleted_count
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup old uploads: {e}")
+            return 0
+
+    # Add indexes for the upload_queue collection
+    def create_upload_indexes(self):
+        """Create indexes for upload queue collection"""
+        try:
+            upload_collection = self.db["upload_queue"]
+            
+            # Create indexes
+            upload_collection.create_index("document_id", unique=True)
+            upload_collection.create_index("status")
+            upload_collection.create_index("upload_timestamp")
+            upload_collection.create_index("updated_at")
+            upload_collection.create_index([("status", 1), ("upload_timestamp", 1)])
+            
+            logger.info("Upload queue indexes created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to create upload indexes: {e}")
         
 db = Database()
