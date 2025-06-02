@@ -1,11 +1,16 @@
 # Environment
 /backend/.env
+/frontend/.env.local
 
 # Large/binary data
 /backend/models/
-/backend//data/
-/backend//logs/
+/backend/data/
+/backend/logs/
 
 # Python cache
 __pycache__/
 /backend/*.py[cod]
+
+# Node.js dependencies
+node_modules/
+
