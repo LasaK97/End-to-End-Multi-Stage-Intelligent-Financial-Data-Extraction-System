@@ -5,7 +5,7 @@ import {
   Squares2X2Icon,
   TrashIcon 
 } from '@heroicons/react/24/outline';
-import { Button, input, Badge } from '../components/ui/Index';
+import { Button, Input, Badge } from '../components/ui/Index';
 import { DocumentGrid } from '../components/features/documents/DocumentGrid';
 import { DocumentList } from '../components/features/documents/DocumentList';
 import { DocumentSearch } from '../components/features/documents/DocumentSearch';

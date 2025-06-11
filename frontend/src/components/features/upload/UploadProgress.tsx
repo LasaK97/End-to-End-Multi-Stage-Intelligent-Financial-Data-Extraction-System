@@ -1,13 +1,14 @@
-import { CheckCircleIcon, ExclamationCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
-import { ProgressBar } from '../../ui/Index';
+import { CheckCircleIcon, ExclamationCircleIcon, ClockIcon, CogIcon } from '@heroicons/react/24/outline';
+import { ProgressBar, Spinner } from '../../ui/Index';
 import { formatFileSize } from '../../../utils/formatting';
 import type { UploadFile } from '../../../types/common';
 
 interface UploadProgressProps {
   file: UploadFile;
+  showProcessingProgress?: boolean;
 }
 
-export const UploadProgress = ({ file }: UploadProgressProps) => {
+export const UploadProgress = ({ file, showProcessingProgress = false }: UploadProgressProps) => {
   const getStatusIcon = () => {
     switch (file.status) {
       case 'success':
@@ -15,7 +16,9 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
       case 'error':
         return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />;
       case 'uploading':
-        return <ClockIcon className="h-5 w-5 text-blue-500" />;
+        return <Spinner size="sm" color="primary" />;
+      case 'ready':
+        return <CogIcon className="h-5 w-5 text-blue-500 animate-spin" />;
       default:
         return <ClockIcon className="h-5 w-5 text-gray-400" />;
     }
@@ -29,8 +32,10 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
         return `Uploading... ${file.progress}%`;
       case 'success':
         return 'Upload complete - Ready for processing';
+      case 'ready':
+        return 'Processing data extraction...';
       case 'error':
-        return file.error || 'Upload failed';
+        return file.error || 'Failed';
       default:
         return 'Unknown status';
     }
@@ -42,6 +47,8 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
         return 'success';
       case 'error':
         return 'error';
+      case 'ready':
+        return 'warning';
       default:
         return 'primary';
     }
@@ -55,13 +62,15 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
         return 'border-red-200 bg-red-50';
       case 'uploading':
         return 'border-blue-200 bg-blue-50';
+      case 'ready':
+        return 'border-yellow-200 bg-yellow-50';
       default:
         return 'border-gray-200 bg-gray-50';
     }
   };
 
   return (
-    <div className={`p-3 border rounded-lg ${getBorderColor()}`}>
+    <div className={`p-3 border rounded-lg transition-all duration-200 ${getBorderColor()}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2 flex-1 min-w-0">
           {getStatusIcon()}
@@ -83,11 +92,27 @@ export const UploadProgress = ({ file }: UploadProgressProps) => {
         />
       )}
 
+      {file.status === 'ready' && showProcessingProgress && (
+        <div className="mb-2">
+          <ProgressBar
+            value={100}
+            color="warning"
+            size="sm"
+            className="animate-pulse"
+          />
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-600">{getStatusText()}</span>
         {file.status === 'success' && file.documentId && (
-          <span className="text-xs text-green-600">
-            ID: {file.documentId.slice(0, 8)}...
+          <span className="text-xs text-green-600 font-mono">
+            {file.documentId.slice(0, 8)}...
+          </span>
+        )}
+        {file.status === 'ready' && (
+          <span className="text-xs text-yellow-600 animate-pulse">
+            Extracting...
           </span>
         )}
       </div>

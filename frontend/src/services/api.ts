@@ -7,6 +7,8 @@ import type {
   DocumentsResponse,
   HealthResponse,
   StatsResponse,
+  BatchProcessResponse,
+  ClearResponse
 } from '../types/api';
 import type { DocumentFilters } from '../types/common';
 
@@ -56,32 +58,29 @@ export const getStats = async (): Promise<StatsResponse> => {
 };
 
 
-export const processBatch = async (documentIds: string[]): Promise<any> => {
+export const processBatch = async (documentIds: string[]): Promise<BatchProcessResponse> => {
   try {
-    const response = await apiClient.post('/process-batch', {
+    return await apiClient.post('/process-batch', {
       document_ids: documentIds
-    }) as { data: any };
-    return response.data;
+    });
   } catch (error) {
     console.error('Batch processing failed:', error);
     throw error;
   }
 };
 
-export const clearQueue = async (): Promise<any> => {
+export const clearQueue = async (): Promise<ClearResponse> => {
   try {
-    const response = await apiClient.delete('/clear-queue') as { data: any };
-    return response.data;
+    return await apiClient.delete('/clear-queue');
   } catch (error) {
     console.error('Clear queue failed:', error);
     throw error;
   }
 };
 
-export const clearResults = async (): Promise<any> => {
+export const clearResults = async (): Promise<ClearResponse> => {
   try {
-    const response = await apiClient.delete('/clear-results') as { data: any };
-    return response.data;
+    return await apiClient.delete('/clear-results');
   } catch (error) {
     console.error('Clear results failed:', error);
     throw error;

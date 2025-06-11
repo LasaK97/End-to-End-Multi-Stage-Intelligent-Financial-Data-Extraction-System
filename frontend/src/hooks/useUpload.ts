@@ -1,22 +1,47 @@
 import { useCallback } from 'react';
-import { useUploadStore } from '../stores/useUploadStore';
-import { validateFile } from '../utils/validation';
-import { uploadDocument } from '../services/api';
 import toast from 'react-hot-toast';
+import { useUploadStore } from '../stores/useUploadStore';
+import { uploadDocument } from '../services/api';
+import { validateFile } from '../utils/validation';
 
 export const useUpload = () => {
-  const { 
-    files, 
-    addFiles, 
+  const {
+    files,
+    addFiles,
     updateFileProgress,
-    updateFileStatus, 
+    updateFileStatus,
     setUploading,
-    isUploading,
-    getProcessableFiles,
     getUploadedFiles,
     getPendingFiles,
-    getFailedFiles
+    getFailedFiles,
   } = useUploadStore();
+
+  const uploadFiles = useCallback(async (validFiles: File[]) => {
+    setUploading(true);
+
+    const newFileRefs = addFiles(validFiles);
+
+    await Promise.all(
+      newFileRefs.map(async ({ id, file }) => {
+        try {
+          updateFileStatus(id, 'uploading');
+
+          const response = await uploadDocument(file, (progress) => {
+            updateFileProgress(id, progress);
+          });
+          console.log('Upload response:', response); // ADD THIS
+          console.log('Document ID:', response.document_id)
+          updateFileStatus(id, 'success', undefined, response.document_id);
+        } catch (error: any) {
+          console.error(`Upload failed for ${file.name}:`, error);
+          updateFileStatus(id, 'error', error?.message || 'Upload failed');
+          toast.error(`${file.name}: Upload failed`);
+        }
+      })
+    );
+
+    setUploading(false);
+  }, [addFiles, updateFileProgress, updateFileStatus, setUploading]);
 
   const handleFileAdd = useCallback((newFiles: File[]) => {
     const validFiles = newFiles.filter(file => {
@@ -29,66 +54,31 @@ export const useUpload = () => {
     });
 
     if (validFiles.length > 0) {
-      addFiles(validFiles);
       uploadFiles(validFiles);
     }
-  }, [addFiles]);
+  }, [uploadFiles]);
 
-  const uploadFiles = useCallback(async (filesToUpload: File[]) => {
-    setUploading(true);
+  const retryUpload = useCallback((fileWithMeta: typeof files[0]) => {
+    const { file, id } = fileWithMeta;
+    updateFileStatus(id, 'pending', undefined);
+    uploadFiles([file]);
+  }, [uploadFiles, updateFileStatus]);
 
-    try {
-      for (const file of filesToUpload) {
-        const fileRecord = files.find(f => f.file === file);
-        if (!fileRecord) continue;
-
-        updateFileStatus(fileRecord.id, 'uploading');
-
-        try {
-          const result = await uploadDocument(file, (progress) => {
-            updateFileProgress(fileRecord.id, progress);
-          });
-
-          updateFileStatus(fileRecord.id, 'success', undefined, result.document_id);
-          toast.success(`${file.name} uploaded successfully`);
-          
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.detail || error.message || 'Upload failed';
-          updateFileStatus(fileRecord.id, 'error', errorMessage);
-          toast.error(`${file.name}: ${errorMessage}`);
-        }
-      }
-    } finally {
-      setUploading(false);
-    }
-  }, [files, updateFileStatus, updateFileProgress, setUploading]);
-
-  const retryUpload = useCallback((fileId: string) => {
-    const file = files.find(f => f.id === fileId);
-    if (file && file.status === 'error') {
-      uploadFiles([file.file]);
-    }
-  }, [files, uploadFiles]);
-
-  const getStats = useCallback(() => {
+  const getStats = () => {
     return {
       total: files.length,
       uploaded: getUploadedFiles().length,
       pending: getPendingFiles().length,
       failed: getFailedFiles().length,
-      processable: getProcessableFiles().length,
+      processable: getUploadedFiles().length,
     };
-  }, [files, getUploadedFiles, getPendingFiles, getFailedFiles, getProcessableFiles]);
+  };
 
   return {
-    files,
-    isUploading,
     handleFileAdd,
+    uploadFiles,
     retryUpload,
-    getProcessableFiles,
-    getUploadedFiles,
-    getPendingFiles,
-    getFailedFiles,
+    isUploading: useUploadStore.getState().isUploading,
     getStats,
   };
 };

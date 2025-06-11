@@ -33,7 +33,9 @@ export interface UploadFile {
   id: string;
   file: File;
   progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: 'pending' | 'uploading' | 'success' | 'error' | 'ready' | 'processing' | 'completed';
   documentId?: string;
   error?: string;
+  uploadTimestamp?: string;
+  processingStarted?: boolean;
 }

@@ -8,13 +8,12 @@ export interface UploadResponse {
 export interface StatusResponse {
   document_id: string;
   filename: string;
-  status: string;
+  status: 'uploaded' | 'processing' | 'completed' | 'failed'; 
   progress: number;
   message: string;
   processing_time?: number;
   error_details?: string[];
 }
-
 export interface LineItem {
   label: string;
   values: Record<string, number>;
@@ -87,7 +86,6 @@ export interface ErrorResponse {
   timestamp: string;
 }
 
-// New interfaces for batch processing
 export interface BatchProcessResponse {
   message: string;
   processed_documents: string[];

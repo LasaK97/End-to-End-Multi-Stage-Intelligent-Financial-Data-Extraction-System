@@ -30,7 +30,7 @@ export const DocumentSearch = () => {
           <FunnelIcon className="h-4 w-4" />
           <span>Filters</span>
           {activeFiltersCount > 0 && (
-            <Badge variant="primary" size="sm">
+            <Badge variant="info" size="sm">
               {activeFiltersCount}
             </Badge>
           )}
